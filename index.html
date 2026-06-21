@@ -627,31 +627,23 @@ function renderDetail(app) {
       icon.textContent = satisfied ? '✓' : '✗';
       topRow.appendChild(icon);
     } else {
-      const cbLabel = document.createElement('label');
-      cbLabel.className = 'flex items-center gap-2 cursor-pointer min-w-[44px] min-h-[44px]';
       const cb = document.createElement('input');
       cb.type = 'checkbox';
       cb.checked = rule.done;
-      cb.className = 'w-5 h-5 sm:w-4 sm:h-4 accent-[#1e3a5f]';
+      cb.className = 'w-6 h-6 min-w-[44px] min-h-[44px] accent-[#1e3a5f] cursor-pointer';
       cb.onchange = () => {
         rule.done = cb.checked;
         if (!rule.done) rule.time = '';
         apiCall('saveDay', { userId: state.selectedUserId, year: y, month: m, day: d, rules: dayData.rules, memo: dayData.memo });
         render();
       };
-      cbLabel.appendChild(cb);
-      topRow.appendChild(cbLabel);
+      topRow.appendChild(cb);
     }
     
     const label = document.createElement('span');
     label.className = `text-sm flex-1 ${rule.done ? 'line-through text-gray-400' : ''}`;
     label.textContent = rule.label;
-    const cbLabel = topRow.querySelector('label');
-    if (cbLabel) {
-      cbLabel.appendChild(label);
-    } else {
-      topRow.appendChild(label);
-    }
+    topRow.appendChild(label);
     
     if (rule.type === 'time_limit' && rule.startTime && rule.endTime) {
       const range = document.createElement('span');
