@@ -27,11 +27,11 @@ function generateId() {
 }
 
 function dayKey(year, month, day) {
-  return `${year}-${month}-${day}`;
+  return `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
 }
 
 function dayLabel(year, month, day) {
-  return `${year}年${month}月${day}日`;
+  return `${year}年${month+1}月${day}日`;
 }
 
 function getAtPath(obj, path) {
