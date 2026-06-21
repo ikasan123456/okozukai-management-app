@@ -167,7 +167,6 @@ function actionSaveDay(data, payload) {
   const existing = getAtPath(data, path) || {};
   const updated = { ...existing, rules: rules || [], memo: memo || '' };
 
-  recordChanges(data, [{ path }], `「${user.name}」の${dayLabel(year, month, day)}の記録を更新`);
   setAtPath(data, path, updated);
   return okResult(data);
 }
