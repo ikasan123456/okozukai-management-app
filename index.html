@@ -630,11 +630,11 @@ function renderDetail(app) {
       const cb = document.createElement('input');
       cb.type = 'checkbox';
       cb.checked = rule.done;
-      cb.className = 'w-6 h-6 min-w-[44px] min-h-[44px] accent-[#1e3a5f] cursor-pointer';
-      cb.onchange = () => {
+      cb.className = 'w-4 h-4 accent-[#1e3a5f]';
+      cb.onchange = async () => {
         rule.done = cb.checked;
         if (!rule.done) rule.time = '';
-        apiCall('saveDay', { userId: state.selectedUserId, year: y, month: m, day: d, rules: dayData.rules, memo: dayData.memo });
+        state.data = await apiCall('saveDay', { userId: state.selectedUserId, year: y, month: m, day: d, rules: dayData.rules, memo: dayData.memo });
         render();
       };
       topRow.appendChild(cb);
