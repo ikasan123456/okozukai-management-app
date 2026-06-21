@@ -211,15 +211,8 @@ function renderUsers(app) {
       const btnRecv = document.createElement('button');
       btnRecv.textContent = `受取（${u.amount}円）`;
       btnRecv.className = 'btn-success text-xs px-3 py-1.5 rounded';
-      btnRecv.onclick = async () => {
-        if (confirm(`${u.name}のお小遣い${u.amount}円を受け取りますか？`)) {
-          try {
-            const dateStr = getTodayKey();
-            const [y, m, d] = dateStr.split('-').map(Number);
-            state.data = await apiCall('receiveAllowance', { userId: uid, year: y, month: m - 1, day: d });
-            render();
-          } catch (e) { alert(e.message); }
-        }
+      btnRecv.onclick = () => {
+        showReceiveModal(uid, u);
       };
       actions.appendChild(btnRecv);
     }
@@ -323,6 +316,58 @@ function showUserModal() {
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
   inputName.focus();
+}
+
+function showReceiveModal(uid, u) {
+  const overlay = document.createElement('div');
+  overlay.className = 'fixed inset-0 modal-overlay flex items-center justify-center z-50 p-4';
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  
+  const modal = document.createElement('div');
+  modal.className = 'bg-white rounded-lg shadow-xl p-6 w-full max-w-sm fade-in';
+  
+  const title = document.createElement('h2');
+  title.className = 'text-lg font-bold mb-4 text-[#1e3a5f]';
+  title.textContent = `お小遣い受取 - ${u.name}`;
+  modal.appendChild(title);
+  
+  const labelDate = document.createElement('label');
+  labelDate.className = 'block text-sm font-medium mb-1';
+  labelDate.textContent = '受け取る日付';
+  modal.appendChild(labelDate);
+  
+  const inputDate = document.createElement('input');
+  inputDate.type = 'date';
+  const today = new Date();
+  inputDate.value = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+  inputDate.className = 'w-full border border-gray-300 rounded px-3 py-2 mb-4 text-sm focus:outline-none focus:border-[#1e3a5f]';
+  modal.appendChild(inputDate);
+  
+  const btns = document.createElement('div');
+  btns.className = 'flex gap-2 justify-end';
+  
+  const btnCancel = document.createElement('button');
+  btnCancel.textContent = 'キャンセル';
+  btnCancel.className = 'btn-secondary px-4 py-2 rounded text-sm';
+  btnCancel.onclick = () => overlay.remove();
+  btns.appendChild(btnCancel);
+  
+  const btnConfirm = document.createElement('button');
+  btnConfirm.textContent = `受取（${u.amount}円）`;
+  btnConfirm.className = 'btn-success px-4 py-2 rounded text-sm';
+  btnConfirm.onclick = async () => {
+    const [y, m, d] = inputDate.value.split('-').map(Number);
+    try {
+      state.data = await apiCall('receiveAllowance', { userId: uid, year: y, month: m - 1, day: d });
+      overlay.remove();
+      render();
+    } catch (e) { alert(e.message); }
+  };
+  btns.appendChild(btnConfirm);
+  
+  modal.appendChild(btns);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
 }
 
 function renderRules(app) {
@@ -589,6 +634,10 @@ function renderDetail(app) {
     }));
   }
   
+  if (dayData.draftMemo === undefined) {
+    dayData.draftMemo = dayData.memo || '';
+  }
+  
   const title = document.createElement('h2');
   title.className = 'text-lg font-bold text-[#1e3a5f] mb-3';
   title.textContent = `${u.name} - ${y}年${m+1}月${d}日`;
@@ -699,15 +748,32 @@ function renderDetail(app) {
     memoText.textContent = dayData.memo || '（メモなし）';
     memoGroup.appendChild(memoText);
   } else {
+    const isMemoDirty = dayData.draftMemo !== dayData.memo;
+    
     const memoInput = document.createElement('textarea');
-    memoInput.value = dayData.memo || '';
+    memoInput.value = dayData.draftMemo;
     memoInput.rows = 2;
-    memoInput.className = 'w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-[#1e3a5f] mb-4';
+    memoInput.className = 'w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-[#1e3a5f] mb-2';
     memoInput.oninput = () => {
-      dayData.memo = memoInput.value;
-      apiCall('saveDay', { userId: state.selectedUserId, year: y, month: m, day: d, rules: dayData.rules, memo: dayData.memo });
+      dayData.draftMemo = memoInput.value;
+      memoBtn.className = dayData.draftMemo !== dayData.memo
+        ? 'btn-success text-xs px-3 py-1 rounded'
+        : 'btn-secondary text-xs px-3 py-1 rounded';
     };
     memoGroup.appendChild(memoInput);
+    
+    const memoBtn = document.createElement('button');
+    memoBtn.textContent = 'メモを保存';
+    memoBtn.className = isMemoDirty
+      ? 'btn-success text-xs px-3 py-1 rounded'
+      : 'btn-secondary text-xs px-3 py-1 rounded';
+    memoBtn.onclick = async () => {
+      dayData.memo = dayData.draftMemo;
+      state.data = await apiCall('saveDay', { userId: state.selectedUserId, year: y, month: m, day: d, rules: dayData.rules, memo: dayData.memo });
+      memoBtn.className = 'btn-secondary text-xs px-3 py-1 rounded';
+      render();
+    };
+    memoGroup.appendChild(memoBtn);
   }
   app.appendChild(memoGroup);
   
@@ -749,6 +815,10 @@ function renderDetail(app) {
     btnConfirm.onclick = async () => {
       if (confirm(allSatisfied ? '全てのルールを満たしています。確定して+1ポイント獲得しますか？' : '確定しますか？')) {
         try {
+          if (dayData.draftMemo !== dayData.memo) {
+            dayData.memo = dayData.draftMemo;
+            await apiCall('saveDay', { userId: state.selectedUserId, year: y, month: m, day: d, rules: dayData.rules, memo: dayData.memo });
+          }
           state.data = await apiCall('confirmDay', {
             userId: state.selectedUserId, year: y, month: m, day: d,
             allSatisfied
