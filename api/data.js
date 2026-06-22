@@ -13,7 +13,7 @@ const CONFIG = {
 };
 
 function getDefaultData() {
-  return { users: {}, rules: {}, points: {}, receivedCounts: {}, days: {}, preHolidays: [], logs: [] };
+  return { users: {}, rules: {}, points: {}, receivedCounts: {}, days: {}, extraHolidays: [], extraWeekdays: [], logs: [] };
 }
 
 const NOT_EXIST = '__NOT_EXIST__';
@@ -88,7 +88,11 @@ function purgeExpiredLogs(data) {
 async function loadData() {
   const raw = await kv.get(CONFIG.KV_KEY);
   if (!raw) return getDefaultData();
-  return { ...getDefaultData(), ...raw };
+  const base = { ...getDefaultData(), ...raw };
+  if (raw.preHolidays && !raw.extraHolidays) {
+    base.extraHolidays = raw.preHolidays;
+  }
+  return base;
 }
 
 async function saveData(data) {
@@ -233,19 +237,25 @@ function actionReceiveAllowance(data, payload) {
   return okResult(data);
 }
 
-function actionSavePreHoliday(data, payload) {
-  const { key } = payload;
-  if (!key || typeof key !== 'string') return errorResult('日付を指定してください');
-  if (!data.preHolidays) data.preHolidays = [];
-  const idx = data.preHolidays.indexOf(key);
+function toggleDateArray(data, arrayName, key, labelOn, labelOff) {
+  if (!data[arrayName]) data[arrayName] = [];
+  const idx = data[arrayName].indexOf(key);
   if (idx >= 0) {
-    data.preHolidays.splice(idx, 1);
-    recordChanges(data, [], `休前日「${key}」を解除`);
+    data[arrayName].splice(idx, 1);
+    recordChanges(data, [], `${labelOff}「${key}」`);
   } else {
-    data.preHolidays.push(key);
-    recordChanges(data, [], `休前日「${key}」を設定`);
+    data[arrayName].push(key);
+    recordChanges(data, [], `${labelOn}「${key}」`);
   }
   return okResult(data);
+}
+
+function actionSaveExtraHoliday(data, payload) {
+  return toggleDateArray(data, 'extraHolidays', payload.key, '休日設定', '休日設定を解除');
+}
+
+function actionSaveExtraWeekday(data, payload) {
+  return toggleDateArray(data, 'extraWeekdays', payload.key, '平日設定', '平日設定を解除');
 }
 
 function actionUndo(data) {
@@ -278,8 +288,10 @@ function handleAction(data, action, payload) {
       return actionConfirmDay(data, payload);
     case 'receiveAllowance':
       return actionReceiveAllowance(data, payload);
-    case 'savePreHoliday':
-      return actionSavePreHoliday(data, payload);
+    case 'saveExtraHoliday':
+      return actionSaveExtraHoliday(data, payload);
+    case 'saveExtraWeekday':
+      return actionSaveExtraWeekday(data, payload);
     case 'undo':
       return actionUndo(data);
     default:
