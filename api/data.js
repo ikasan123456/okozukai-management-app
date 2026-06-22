@@ -13,7 +13,7 @@ const CONFIG = {
 };
 
 function getDefaultData() {
-  return { users: {}, rules: {}, points: {}, days: {}, logs: [] };
+  return { users: {}, rules: {}, points: {}, days: {}, preHolidays: [], logs: [] };
 }
 
 const NOT_EXIST = '__NOT_EXIST__';
@@ -224,6 +224,21 @@ function actionReceiveAllowance(data, payload) {
   return okResult(data);
 }
 
+function actionSavePreHoliday(data, payload) {
+  const { key } = payload;
+  if (!key || typeof key !== 'string') return errorResult('日付を指定してください');
+  if (!data.preHolidays) data.preHolidays = [];
+  const idx = data.preHolidays.indexOf(key);
+  if (idx >= 0) {
+    data.preHolidays.splice(idx, 1);
+    recordChanges(data, [], `休前日「${key}」を解除`);
+  } else {
+    data.preHolidays.push(key);
+    recordChanges(data, [], `休前日「${key}」を設定`);
+  }
+  return okResult(data);
+}
+
 function actionUndo(data) {
   purgeExpiredLogs(data);
   if (data.logs.length === 0) return errorResult('取り消せる操作がありません');
@@ -254,6 +269,8 @@ function handleAction(data, action, payload) {
       return actionConfirmDay(data, payload);
     case 'receiveAllowance':
       return actionReceiveAllowance(data, payload);
+    case 'savePreHoliday':
+      return actionSavePreHoliday(data, payload);
     case 'undo':
       return actionUndo(data);
     default:

@@ -1,3 +1,9 @@
 # mdを無視
 
 *.md
+.vercel
+.env*
+.local
+.env
+# node_modules
+node_modules/
