@@ -13,7 +13,7 @@ const CONFIG = {
 };
 
 function getDefaultData() {
-  return { users: {}, rules: {}, points: {}, days: {}, preHolidays: [], logs: [] };
+  return { users: {}, rules: {}, points: {}, receivedCounts: {}, days: {}, preHolidays: [], logs: [] };
 }
 
 const NOT_EXIST = '__NOT_EXIST__';
@@ -115,14 +115,16 @@ function actionSaveUser(data, payload) {
 
   const changes = [{ path: ['users', id] }];
   if (isNew) {
-    changes.push({ path: ['points', id] }, { path: ['rules', id] });
+    changes.push({ path: ['points', id] }, { path: ['rules', id] }, { path: ['receivedCounts', id] });
   }
   recordChanges(data, changes, `ユーザー「${name}」を${isNew ? '追加' : '更新'}`);
 
-  setAtPath(data, ['users', id], { id, name, amount });
+  const requiredDays = Math.max(7, Math.min(100, parseInt(payload.requiredDays) || 7));
+  setAtPath(data, ['users', id], { id, name, amount, requiredDays });
   if (isNew) {
     setAtPath(data, ['points', id], 0);
     setAtPath(data, ['rules', id], { weekday: [], holiday: [] });
+    setAtPath(data, ['receivedCounts', id], 0);
   }
   return okResult(data);
 }
@@ -136,12 +138,14 @@ function actionDeleteUser(data, payload) {
     { path: ['users', id] },
     { path: ['rules', id] },
     { path: ['points', id] },
+    { path: ['receivedCounts', id] },
   ];
   recordChanges(data, changes, `ユーザー「${user.name}」を削除`);
 
   deleteAtPath(data, ['users', id]);
   deleteAtPath(data, ['rules', id]);
   deleteAtPath(data, ['points', id]);
+  deleteAtPath(data, ['receivedCounts', id]);
   return okResult(data);
 }
 
@@ -159,13 +163,13 @@ function actionSaveRules(data, payload) {
 }
 
 function actionSaveDay(data, payload) {
-  const { userId, year, month, day, rules, memo } = payload;
+  const { userId, year, month, day, rules, memo, todos } = payload;
   const user = getAtPath(data, ['users', userId]);
   if (!user) return errorResult('対象のユーザーが見つかりません');
 
   const path = ['days', dayKey(year, month, day), userId];
   const existing = getAtPath(data, path) || {};
-  const updated = { ...existing, rules: rules || [], memo: memo || '' };
+  const updated = { ...existing, rules: rules || [], memo: memo || '', todos: todos || existing.todos || [] };
 
   setAtPath(data, path, updated);
   return okResult(data);
@@ -192,7 +196,9 @@ function actionConfirmDay(data, payload) {
   
   if (allSatisfied) {
     const currentPoints = getAtPath(data, pointsPath) || 0;
-    setAtPath(data, pointsPath, currentPoints + 1);
+    const user = getAtPath(data, ['users', userId]);
+    const maxPoints = (user && user.requiredDays ? user.requiredDays : 7) * 2;
+    setAtPath(data, pointsPath, Math.min(currentPoints + 1, maxPoints));
   }
   return okResult(data);
 }
@@ -202,25 +208,28 @@ function actionReceiveAllowance(data, payload) {
   const user = getAtPath(data, ['users', userId]);
   if (!user) return errorResult('対象のユーザーが見つかりません');
 
+  const requiredDays = user.requiredDays || CONFIG.ACHIEVEMENT_DAYS_THRESHOLD;
   const pointsPath = ['points', userId];
   const currentPoints = getAtPath(data, pointsPath) || 0;
-  if (currentPoints < CONFIG.ACHIEVEMENT_DAYS_THRESHOLD) {
-    return errorResult(`達成日数が${CONFIG.ACHIEVEMENT_DAYS_THRESHOLD}日に達していません`);
+  if (currentPoints < requiredDays) {
+    return errorResult(`達成日数が${requiredDays}日に達していません`);
   }
 
   const dayPath = ['days', dayKey(year, month, day), userId];
   const existing = getAtPath(data, dayPath) || {};
   if (existing.received) return errorResult('この日はすでに受取済です');
 
+  const receivedCountsPath = ['receivedCounts', userId];
   recordChanges(
     data,
-    [{ path: dayPath }, { path: pointsPath }],
+    [{ path: dayPath }, { path: pointsPath }, { path: receivedCountsPath }],
     `「${user.name}」がおこづかいを受け取り`
   );
 
   const now = Date.now();
-  setAtPath(data, dayPath, { ...existing, received: true, receivedAt: now });
-  setAtPath(data, pointsPath, currentPoints - CONFIG.ACHIEVEMENT_DAYS_THRESHOLD);
+  setAtPath(data, dayPath, { ...existing, received: true, receivedAt: now, receivedDate: dayKey(year, month, day), receivedTime: new Date(now).toTimeString().slice(0,5) });
+  setAtPath(data, pointsPath, currentPoints - requiredDays);
+  setAtPath(data, receivedCountsPath, (getAtPath(data, receivedCountsPath) || 0) + 1);
   return okResult(data);
 }
 

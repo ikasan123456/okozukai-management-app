@@ -40,11 +40,11 @@
 <div id="app" class="max-w-5xl mx-auto px-3 sm:px-4 py-4"></div>
 
 <script>
-const CONFIG = { REQUIRED_DAYS: 7, API_BASE: '/api/data' };
+const CONFIG = { DEFAULT_REQUIRED_DAYS: 7, API_BASE: '/api/data', CALENDAR_MIN_YEAR: 2020, CALENDAR_MAX_YEAR: 2099 };
 let state = {
   data: null, view: 'users', selectedUserId: null, selectedDate: null,
   calendarYear: null, calendarMonth: null, editingUserId: null,
-  editingName: '', editingAmount: 500,
+  editingName: '', editingAmount: 500, editingRequiredDays: 7,
   editingRulesWeekday: [], editingRulesHoliday: []
 };
 
@@ -152,19 +152,15 @@ function renderNav(app, showHistory = true) {
 
 function renderPreHoliday(app) {
   renderNav(app);
-  
   const title = document.createElement('h2');
   title.className = 'text-lg font-bold text-[#1e3a5f] mb-3';
   title.textContent = '休前日設定';
   app.appendChild(title);
-  
   const info = document.createElement('div');
   info.className = 'text-xs text-gray-400 mb-3';
   info.textContent = '設定した日付は、前日に休日ルールが適用されます（例：6/23を設定 → 6/22に休日ルール）';
   app.appendChild(info);
-  
   const preHolidays = state.data.preHolidays || [];
-  
   const addRow = document.createElement('div');
   addRow.className = 'flex items-center gap-2 mb-4';
   const dateInput = document.createElement('input');
@@ -176,40 +172,19 @@ function renderPreHoliday(app) {
   btnAdd.className = 'btn-primary text-xs px-4 py-2 rounded';
   btnAdd.onclick = async () => {
     if (!dateInput.value) return;
-    try {
-      state.data = await apiCall('savePreHoliday', { key: dateInput.value });
-      render();
-    } catch (e) { alert(e.message); }
+    try { state.data = await apiCall('savePreHoliday', { key: dateInput.value }); render(); } catch (e) { alert(e.message); }
   };
-  addRow.appendChild(btnAdd);
-  app.appendChild(addRow);
-  
+  addRow.appendChild(btnAdd); app.appendChild(addRow);
   if (preHolidays.length === 0) {
-    const empty = document.createElement('div');
-    empty.className = 'text-center text-gray-400 py-4 text-sm';
-    empty.textContent = '休前日は設定されていません';
-    app.appendChild(empty);
+    const empty = document.createElement('div'); empty.className = 'text-center text-gray-400 py-4 text-sm'; empty.textContent = '休前日は設定されていません'; app.appendChild(empty);
   } else {
-    const list = document.createElement('div');
-    list.className = 'space-y-2 fade-in';
+    const list = document.createElement('div'); list.className = 'space-y-2 fade-in';
     preHolidays.slice().sort().forEach(key => {
-      const row = document.createElement('div');
-      row.className = 'bg-white border border-gray-200 rounded p-3 flex items-center justify-between gap-2';
-      const label = document.createElement('span');
-      label.className = 'text-sm font-medium';
-      label.textContent = key;
-      row.appendChild(label);
-      const btnDel = document.createElement('button');
-      btnDel.textContent = '解除';
-      btnDel.className = 'btn-danger text-xs px-3 py-1 rounded';
-      btnDel.onclick = async () => {
-        try {
-          state.data = await apiCall('savePreHoliday', { key });
-          render();
-        } catch (e) { alert(e.message); }
-      };
-      row.appendChild(btnDel);
-      list.appendChild(row);
+      const row = document.createElement('div'); row.className = 'bg-white border border-gray-200 rounded p-3 flex items-center justify-between gap-2';
+      const label = document.createElement('span'); label.className = 'text-sm font-medium'; label.textContent = key; row.appendChild(label);
+      const btnDel = document.createElement('button'); btnDel.textContent = '解除'; btnDel.className = 'btn-danger text-xs px-3 py-1 rounded';
+      btnDel.onclick = async () => { try { state.data = await apiCall('savePreHoliday', { key }); render(); } catch (e) { alert(e.message); } };
+      row.appendChild(btnDel); list.appendChild(row);
     });
     app.appendChild(list);
   }
@@ -217,810 +192,324 @@ function renderPreHoliday(app) {
 
 function renderUsers(app) {
   renderNav(app);
-  
-  const list = document.createElement('div');
-  list.className = 'space-y-2 mb-4 fade-in';
+  const list = document.createElement('div'); list.className = 'space-y-2 mb-4 fade-in';
   
   Object.keys(state.data.users || {}).forEach(uid => {
     const u = state.data.users[uid];
     const card = document.createElement('div');
     card.className = 'bg-white rounded-lg border border-gray-200 p-3 sm:p-4 flex items-center justify-between shadow-sm';
-    
-    const info = document.createElement('div');
-    info.className = 'flex-1';
-    const name = document.createElement('div');
-    name.className = 'font-semibold text-base';
-    name.textContent = u.name;
-    info.appendChild(name);
-    const amount = document.createElement('div');
-    amount.className = 'text-sm text-gray-500';
-    amount.textContent = `${u.amount}円/月`;
-    info.appendChild(amount);
-    const points = document.createElement('div');
-    points.className = 'text-xs text-gray-400';
-    points.textContent = `ポイント: ${state.data.points[uid] || 0}/${CONFIG.REQUIRED_DAYS}`;
-    info.appendChild(points);
+    const info = document.createElement('div'); info.className = 'flex-1';
+    const name = document.createElement('div'); name.className = 'font-semibold text-base'; name.textContent = u.name; info.appendChild(name);
+    const amount = document.createElement('div'); amount.className = 'text-sm text-gray-500'; amount.textContent = `${u.amount}円/月`; info.appendChild(amount);
+    const reqDays = u.requiredDays || CONFIG.DEFAULT_REQUIRED_DAYS;
+    const points = document.createElement('div'); points.className = 'text-xs text-gray-400';
+    points.textContent = `ポイント: ${state.data.points[uid] || 0}/${reqDays}`; info.appendChild(points);
+    const recvCount = state.data.receivedCounts ? (state.data.receivedCounts[uid] || 0) : 0;
+    if (recvCount > 0) {
+      const rc = document.createElement('div'); rc.className = 'text-xs text-gray-400'; rc.textContent = `受取回数: ${recvCount}`; info.appendChild(rc);
+    }
     card.appendChild(info);
     
-    const actions = document.createElement('div');
-    actions.className = 'flex gap-2 flex-wrap';
-    
-    const btnCal = document.createElement('button');
-    btnCal.textContent = 'カレンダー';
-    btnCal.className = 'btn-primary text-xs px-3 py-1.5 rounded';
-    btnCal.onclick = () => {
-      state.selectedUserId = uid;
-      const now = new Date();
-      state.calendarYear = now.getFullYear();
-      state.calendarMonth = now.getMonth();
-      state.view = 'calendar';
-      render();
-    };
+    const actions = document.createElement('div'); actions.className = 'flex gap-2 flex-wrap';
+    const btnCal = document.createElement('button'); btnCal.textContent = 'カレンダー'; btnCal.className = 'btn-primary text-xs px-3 py-1.5 rounded';
+    btnCal.onclick = () => { state.selectedUserId = uid; const now = new Date(); state.calendarYear = now.getFullYear(); state.calendarMonth = now.getMonth(); state.view = 'calendar'; render(); };
     actions.appendChild(btnCal);
-    
-    const btnRules = document.createElement('button');
-    btnRules.textContent = 'ルール';
-    btnRules.className = 'btn-secondary text-xs px-3 py-1.5 rounded';
-    btnRules.onclick = () => {
-      state.selectedUserId = uid;
-      const rules = state.data.rules[uid] || { weekday: [], holiday: [] };
-      state.editingRulesWeekday = JSON.parse(JSON.stringify(rules.weekday || []));
-      state.editingRulesHoliday = JSON.parse(JSON.stringify(rules.holiday || []));
-      state.view = 'rules';
-      render();
-    };
+    const btnRules = document.createElement('button'); btnRules.textContent = 'ルール'; btnRules.className = 'btn-secondary text-xs px-3 py-1.5 rounded';
+    btnRules.onclick = () => { state.selectedUserId = uid; const rules = state.data.rules[uid] || { weekday: [], holiday: [] }; state.editingRulesWeekday = JSON.parse(JSON.stringify(rules.weekday || [])); state.editingRulesHoliday = JSON.parse(JSON.stringify(rules.holiday || [])); state.view = 'rules'; render(); };
     actions.appendChild(btnRules);
-    
-    const btnEdit = document.createElement('button');
-    btnEdit.textContent = '編集';
-    btnEdit.className = 'btn-secondary text-xs px-3 py-1.5 rounded';
-    btnEdit.onclick = () => {
-      state.editingUserId = uid;
-      state.editingName = u.name;
-      state.editingAmount = u.amount;
-      showUserModal();
-    };
+    const btnEdit = document.createElement('button'); btnEdit.textContent = '編集'; btnEdit.className = 'btn-secondary text-xs px-3 py-1.5 rounded';
+    btnEdit.onclick = () => { state.editingUserId = uid; state.editingName = u.name; state.editingAmount = u.amount; state.editingRequiredDays = u.requiredDays || CONFIG.DEFAULT_REQUIRED_DAYS; showUserModal(); };
     actions.appendChild(btnEdit);
     
-    if ((state.data.points[uid] || 0) >= CONFIG.REQUIRED_DAYS) {
-      const btnRecv = document.createElement('button');
-      btnRecv.textContent = `受取（${u.amount}円）`;
-      btnRecv.className = 'btn-success text-xs px-3 py-1.5 rounded';
-      btnRecv.onclick = () => {
-        showReceiveModal(uid, u);
-      };
+    if ((state.data.points[uid] || 0) >= reqDays) {
+      const btnRecv = document.createElement('button'); btnRecv.textContent = `受取証明（${u.amount}円）`; btnRecv.className = 'btn-success text-xs px-3 py-1.5 rounded';
+      btnRecv.onclick = () => { showReceiveModal(uid, u); };
       actions.appendChild(btnRecv);
     }
-    
-    card.appendChild(actions);
-    list.appendChild(card);
+    card.appendChild(actions); list.appendChild(card);
   });
-  
   app.appendChild(list);
-  
-  const btnAdd = document.createElement('button');
-  btnAdd.textContent = '+ ユーザー追加';
-  btnAdd.className = 'btn-secondary px-4 py-2 rounded text-sm';
-  btnAdd.onclick = () => {
-    state.editingUserId = null;
-    state.editingName = '';
-    state.editingAmount = 500;
-    showUserModal();
-  };
+  const btnAdd = document.createElement('button'); btnAdd.textContent = '+ ユーザー追加'; btnAdd.className = 'btn-secondary px-4 py-2 rounded text-sm';
+  btnAdd.onclick = () => { state.editingUserId = null; state.editingName = ''; state.editingAmount = 500; state.editingRequiredDays = CONFIG.DEFAULT_REQUIRED_DAYS; showUserModal(); };
   app.appendChild(btnAdd);
 }
 
 function showUserModal() {
-  const overlay = document.createElement('div');
-  overlay.className = 'fixed inset-0 modal-overlay flex items-center justify-center z-50 p-4';
-  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  const overlay = document.createElement('div'); overlay.className = 'fixed inset-0 modal-overlay flex items-center justify-center z-50 p-4'; overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  const modal = document.createElement('div'); modal.className = 'bg-white rounded-lg shadow-xl p-6 w-full max-w-md fade-in';
+  const title = document.createElement('h2'); title.className = 'text-lg font-bold mb-4 text-[#1e3a5f]'; title.textContent = state.editingUserId ? 'ユーザー編集' : 'ユーザー追加'; modal.appendChild(title);
   
-  const modal = document.createElement('div');
-  modal.className = 'bg-white rounded-lg shadow-xl p-6 w-full max-w-md fade-in';
+  const labelName = document.createElement('label'); labelName.className = 'block text-sm font-medium mb-1'; labelName.textContent = '名前'; modal.appendChild(labelName);
+  const inputName = document.createElement('input'); inputName.type = 'text'; inputName.value = state.editingName; inputName.className = 'w-full border border-gray-300 rounded px-3 py-2 mb-3 text-sm focus:outline-none focus:border-[#1e3a5f]'; modal.appendChild(inputName);
   
-  const title = document.createElement('h2');
-  title.className = 'text-lg font-bold mb-4 text-[#1e3a5f]';
-  title.textContent = state.editingUserId ? 'ユーザー編集' : 'ユーザー追加';
-  modal.appendChild(title);
+  const labelAmount = document.createElement('label'); labelAmount.className = 'block text-sm font-medium mb-1'; labelAmount.textContent = 'お小遣い（円）'; modal.appendChild(labelAmount);
+  const inputAmount = document.createElement('input'); inputAmount.type = 'number'; inputAmount.value = state.editingAmount; inputAmount.className = 'w-full border border-gray-300 rounded px-3 py-2 mb-3 text-sm focus:outline-none focus:border-[#1e3a5f]'; modal.appendChild(inputAmount);
   
-  const labelName = document.createElement('label');
-  labelName.className = 'block text-sm font-medium mb-1';
-  labelName.textContent = '名前';
-  modal.appendChild(labelName);
-  const inputName = document.createElement('input');
-  inputName.type = 'text';
-  inputName.value = state.editingName;
-  inputName.className = 'w-full border border-gray-300 rounded px-3 py-2 mb-3 text-sm focus:outline-none focus:border-[#1e3a5f]';
-  modal.appendChild(inputName);
+  const labelReq = document.createElement('label'); labelReq.className = 'block text-sm font-medium mb-1'; labelReq.textContent = '必要日数（7〜100）'; modal.appendChild(labelReq);
+  const inputReq = document.createElement('input'); inputReq.type = 'number'; inputReq.min = '7'; inputReq.max = '100'; inputReq.value = state.editingRequiredDays || 7; inputReq.className = 'w-full border border-gray-300 rounded px-3 py-2 mb-4 text-sm focus:outline-none focus:border-[#1e3a5f]'; modal.appendChild(inputReq);
   
-  const labelAmount = document.createElement('label');
-  labelAmount.className = 'block text-sm font-medium mb-1';
-  labelAmount.textContent = 'お小遣い（円）';
-  modal.appendChild(labelAmount);
-  const inputAmount = document.createElement('input');
-  inputAmount.type = 'number';
-  inputAmount.value = state.editingAmount;
-  inputAmount.className = 'w-full border border-gray-300 rounded px-3 py-2 mb-4 text-sm focus:outline-none focus:border-[#1e3a5f]';
-  modal.appendChild(inputAmount);
-  
-  const btns = document.createElement('div');
-  btns.className = 'flex gap-2 justify-end';
-  
-  const btnCancel = document.createElement('button');
-  btnCancel.textContent = 'キャンセル';
-  btnCancel.className = 'btn-secondary px-4 py-2 rounded text-sm';
-  btnCancel.onclick = () => overlay.remove();
-  btns.appendChild(btnCancel);
-  
-  const btnSave = document.createElement('button');
-  btnSave.textContent = '保存';
-  btnSave.className = 'btn-primary px-4 py-2 rounded text-sm';
+  const btns = document.createElement('div'); btns.className = 'flex gap-2 justify-end';
+  const btnCancel = document.createElement('button'); btnCancel.textContent = 'キャンセル'; btnCancel.className = 'btn-secondary px-4 py-2 rounded text-sm'; btnCancel.onclick = () => overlay.remove(); btns.appendChild(btnCancel);
+  const btnSave = document.createElement('button'); btnSave.textContent = '保存'; btnSave.className = 'btn-primary px-4 py-2 rounded text-sm';
   btnSave.onclick = async () => {
-    const name = inputName.value.trim();
-    if (!name) { alert('名前を入力してください'); return; }
-    const amount = parseInt(inputAmount.value) || 500;
+    const name = inputName.value.trim(); if (!name) { alert('名前を入力してください'); return; }
+    const amount = parseInt(inputAmount.value) || 500; const requiredDays = Math.max(7, Math.min(100, parseInt(inputReq.value) || 7));
     try {
       if (state.editingUserId) {
-        state.data = await apiCall('saveUser', { id: state.editingUserId, name, amount });
+        state.data = await apiCall('saveUser', { id: state.editingUserId, name, amount, requiredDays });
       } else {
-        state.data = await apiCall('saveUser', { name, amount });
+        state.data = await apiCall('saveUser', { name, amount, requiredDays });
       }
-      overlay.remove();
-      render();
+      overlay.remove(); render();
     } catch (e) { alert(e.message); }
   };
   btns.appendChild(btnSave);
-  
   if (state.editingUserId) {
-    const btnDelete = document.createElement('button');
-    btnDelete.textContent = '削除';
-    btnDelete.className = 'btn-danger px-4 py-2 rounded text-sm';
-    btnDelete.onclick = async () => {
-      if (confirm('削除しますか？')) {
-        try {
-          state.data = await apiCall('deleteUser', { id: state.editingUserId });
-          overlay.remove();
-          render();
-        } catch (e) { alert(e.message); }
-      }
-    };
+    const btnDelete = document.createElement('button'); btnDelete.textContent = '削除'; btnDelete.className = 'btn-danger px-4 py-2 rounded text-sm';
+    btnDelete.onclick = async () => { if (confirm('削除しますか？')) { try { state.data = await apiCall('deleteUser', { id: state.editingUserId }); overlay.remove(); render(); } catch (e) { alert(e.message); } } };
     btns.appendChild(btnDelete);
   }
-  
-  modal.appendChild(btns);
-  overlay.appendChild(modal);
-  document.body.appendChild(overlay);
-  inputName.focus();
+  modal.appendChild(btns); overlay.appendChild(modal); document.body.appendChild(overlay); inputName.focus();
 }
 
 function showReceiveModal(uid, u) {
-  const overlay = document.createElement('div');
-  overlay.className = 'fixed inset-0 modal-overlay flex items-center justify-center z-50 p-4';
-  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
-  
-  const modal = document.createElement('div');
-  modal.className = 'bg-white rounded-lg shadow-xl p-6 w-full max-w-sm fade-in';
-  
-  const title = document.createElement('h2');
-  title.className = 'text-lg font-bold mb-4 text-[#1e3a5f]';
-  title.textContent = `お小遣い受取 - ${u.name}`;
-  modal.appendChild(title);
-  
-  const labelDate = document.createElement('label');
-  labelDate.className = 'block text-sm font-medium mb-1';
-  labelDate.textContent = '受け取る日付';
-  modal.appendChild(labelDate);
-  
-  const inputDate = document.createElement('input');
-  inputDate.type = 'date';
-  const today = new Date();
-  inputDate.value = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
-  inputDate.className = 'w-full border border-gray-300 rounded px-3 py-2 mb-4 text-sm focus:outline-none focus:border-[#1e3a5f]';
-  modal.appendChild(inputDate);
-  
-  const btns = document.createElement('div');
-  btns.className = 'flex gap-2 justify-end';
-  
-  const btnCancel = document.createElement('button');
-  btnCancel.textContent = 'キャンセル';
-  btnCancel.className = 'btn-secondary px-4 py-2 rounded text-sm';
-  btnCancel.onclick = () => overlay.remove();
-  btns.appendChild(btnCancel);
-  
-  const btnConfirm = document.createElement('button');
-  btnConfirm.textContent = `受取（${u.amount}円）`;
-  btnConfirm.className = 'btn-success px-4 py-2 rounded text-sm';
+  const overlay = document.createElement('div'); overlay.className = 'fixed inset-0 modal-overlay flex items-center justify-center z-50 p-4'; overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  const modal = document.createElement('div'); modal.className = 'bg-white rounded-lg shadow-xl p-6 w-full max-w-sm fade-in';
+  const title = document.createElement('h2'); title.className = 'text-lg font-bold mb-4 text-[#1e3a5f]'; title.textContent = `受取証明 - ${u.name}`; modal.appendChild(title);
+  const labelDate = document.createElement('label'); labelDate.className = 'block text-sm font-medium mb-1'; labelDate.textContent = '受け取る日付'; modal.appendChild(labelDate);
+  const inputDate = document.createElement('input'); inputDate.type = 'date';
+  const today = new Date(); inputDate.value = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+  inputDate.className = 'w-full border border-gray-300 rounded px-3 py-2 mb-4 text-sm focus:outline-none focus:border-[#1e3a5f]'; modal.appendChild(inputDate);
+  const btns = document.createElement('div'); btns.className = 'flex gap-2 justify-end';
+  const btnCancel = document.createElement('button'); btnCancel.textContent = 'キャンセル'; btnCancel.className = 'btn-secondary px-4 py-2 rounded text-sm'; btnCancel.onclick = () => overlay.remove(); btns.appendChild(btnCancel);
+  const btnConfirm = document.createElement('button'); btnConfirm.textContent = `受取証明（${u.amount}円）`; btnConfirm.className = 'btn-success px-4 py-2 rounded text-sm';
   btnConfirm.onclick = async () => {
     const [y, m, d] = inputDate.value.split('-').map(Number);
-    try {
-      state.data = await apiCall('receiveAllowance', { userId: uid, year: y, month: m - 1, day: d });
-      overlay.remove();
-      render();
-    } catch (e) { alert(e.message); }
+    try { state.data = await apiCall('receiveAllowance', { userId: uid, year: y, month: m - 1, day: d }); overlay.remove(); render(); } catch (e) { alert(e.message); }
   };
-  btns.appendChild(btnConfirm);
-  
-  modal.appendChild(btns);
-  overlay.appendChild(modal);
-  document.body.appendChild(overlay);
+  btns.appendChild(btnConfirm); modal.appendChild(btns); overlay.appendChild(modal); document.body.appendChild(overlay);
 }
 
 function renderRules(app) {
-  const back = document.createElement('button');
-  back.textContent = '← 戻る';
-  back.className = 'btn-secondary px-3 py-1.5 rounded text-sm mb-4';
-  back.onclick = () => { state.view = 'users'; render(); };
-  app.appendChild(back);
-  
-  const u = state.data.users[state.selectedUserId];
-  const title = document.createElement('h2');
-  title.className = 'text-lg font-bold text-[#1e3a5f] mb-4';
-  title.textContent = `${u.name}のルール設定`;
-  app.appendChild(title);
+  const back = document.createElement('button'); back.textContent = '← 戻る'; back.className = 'btn-secondary px-3 py-1.5 rounded text-sm mb-4'; back.onclick = () => { state.view = 'users'; render(); }; app.appendChild(back);
+  const u = state.data.users[state.selectedUserId]; const title = document.createElement('h2'); title.className = 'text-lg font-bold text-[#1e3a5f] mb-4'; title.textContent = `${u.name}のルール設定`; app.appendChild(title);
   
   const renderGroup = (label, rulesList) => {
-    const box = document.createElement('div');
-    box.className = 'bg-white border border-gray-200 rounded-lg p-4 mb-4 fade-in';
-    const h = document.createElement('h3');
-    h.className = 'font-semibold text-sm text-[#1e3a5f] mb-3';
-    h.textContent = label;
-    box.appendChild(h);
-    
+    const box = document.createElement('div'); box.className = 'bg-white border border-gray-200 rounded-lg p-4 mb-4 fade-in';
+    const h = document.createElement('h3'); h.className = 'font-semibold text-sm text-[#1e3a5f] mb-3'; h.textContent = label; box.appendChild(h);
     rulesList.forEach((rule, idx) => {
-      const row = document.createElement('div');
-      row.className = 'border border-gray-100 rounded p-2 mb-2 last:mb-0';
-      
-      const labelRow = document.createElement('div');
-      labelRow.className = 'flex items-center gap-2 mb-2';
-      const inp = document.createElement('input');
-      inp.type = 'text';
-      inp.value = rule.label;
-      inp.placeholder = 'ルール内容';
-      inp.className = 'flex-1 border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:border-[#1e3a5f]';
-      inp.oninput = () => { rule.label = inp.value; };
-      labelRow.appendChild(inp);
-      const btnDel = document.createElement('button');
-      btnDel.textContent = '×';
-      btnDel.className = 'text-red-500 font-bold px-2';
-      btnDel.onclick = () => { rulesList.splice(idx, 1); render(); };
-      labelRow.appendChild(btnDel);
-      row.appendChild(labelRow);
-      
-      const typeRow = document.createElement('div');
-      typeRow.className = 'flex items-center gap-2 text-xs flex-wrap';
-      const typeLabel = document.createElement('span');
-      typeLabel.className = 'text-gray-500';
-      typeLabel.textContent = '種類:';
-      typeRow.appendChild(typeLabel);
-      
-      const select = document.createElement('select');
-      select.className = 'border border-gray-300 rounded px-2 py-0.5 text-sm focus:outline-none focus:border-[#1e3a5f]';
-      const opt1 = document.createElement('option');
-      opt1.value = 'do';
-      opt1.textContent = '実行確認のみ';
-      select.appendChild(opt1);
-      const opt2 = document.createElement('option');
-      opt2.value = 'time_limit';
-      opt2.textContent = '時間制限（範囲指定）';
-      select.appendChild(opt2);
-      select.value = rule.type || 'do';
-      select.onchange = () => {
-        rule.type = select.value;
-        if (rule.type === 'time_limit') {
-          if (!rule.startTime) rule.startTime = '06:00';
-          if (!rule.endTime) rule.endTime = '22:00';
-        }
-        render();
-      };
-      typeRow.appendChild(select);
-      
+      const row = document.createElement('div'); row.className = 'border border-gray-100 rounded p-2 mb-2 last:mb-0';
+      const labelRow = document.createElement('div'); labelRow.className = 'flex items-center gap-2 mb-2';
+      const inp = document.createElement('input'); inp.type = 'text'; inp.value = rule.label; inp.placeholder = 'ルール内容'; inp.className = 'flex-1 border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:border-[#1e3a5f]'; inp.oninput = () => { rule.label = inp.value; }; labelRow.appendChild(inp);
+      const btnDel = document.createElement('button'); btnDel.textContent = '×'; btnDel.className = 'text-red-500 font-bold px-2'; btnDel.onclick = () => { rulesList.splice(idx, 1); render(); }; labelRow.appendChild(btnDel); row.appendChild(labelRow);
+      const typeRow = document.createElement('div'); typeRow.className = 'flex items-center gap-2 text-xs flex-wrap';
+      const typeLabel = document.createElement('span'); typeLabel.className = 'text-gray-500'; typeLabel.textContent = '種類:'; typeRow.appendChild(typeLabel);
+      const select = document.createElement('select'); select.className = 'border border-gray-300 rounded px-2 py-0.5 text-sm focus:outline-none focus:border-[#1e3a5f]';
+      const opt1 = document.createElement('option'); opt1.value = 'do'; opt1.textContent = '実行確認のみ'; select.appendChild(opt1);
+      const opt2 = document.createElement('option'); opt2.value = 'time_limit'; opt2.textContent = '時間制限（範囲指定）'; select.appendChild(opt2);
+      select.value = rule.type || 'do'; select.onchange = () => { rule.type = select.value; if (rule.type === 'time_limit') { if (!rule.startTime) rule.startTime = '06:00'; if (!rule.endTime) rule.endTime = '22:00'; } render(); }; typeRow.appendChild(select);
       if (rule.type === 'time_limit') {
-        const startLabel = document.createElement('span');
-        startLabel.className = 'text-gray-500 ml-2';
-        startLabel.textContent = '開始:';
-        typeRow.appendChild(startLabel);
-        const startInput = document.createElement('input');
-        startInput.type = 'time';
-        startInput.value = rule.startTime || '06:00';
-        startInput.className = 'border border-gray-300 rounded px-2 py-0.5 text-sm focus:outline-none focus:border-[#1e3a5f]';
-        startInput.oninput = () => { rule.startTime = startInput.value; };
-        typeRow.appendChild(startInput);
-        
-        const endLabel = document.createElement('span');
-        endLabel.className = 'text-gray-500 ml-2';
-        endLabel.textContent = '終了:';
-        typeRow.appendChild(endLabel);
-        const endInput = document.createElement('input');
-        endInput.type = 'time';
-        endInput.value = rule.endTime || '22:00';
-        endInput.className = 'border border-gray-300 rounded px-2 py-0.5 text-sm focus:outline-none focus:border-[#1e3a5f]';
-        endInput.oninput = () => { rule.endTime = endInput.value; };
-        typeRow.appendChild(endInput);
-        
-        const tolLabel = document.createElement('span');
-        tolLabel.className = 'text-gray-500 ml-2';
-        tolLabel.textContent = '許容(分):';
-        typeRow.appendChild(tolLabel);
-        const tolInput = document.createElement('input');
-        tolInput.type = 'number';
-        tolInput.min = '0';
-        tolInput.value = rule.toleranceMinutes || 0;
-        tolInput.className = 'border border-gray-300 rounded px-1 py-0.5 text-sm w-14 focus:outline-none focus:border-[#1e3a5f]';
-        tolInput.oninput = () => { rule.toleranceMinutes = parseInt(tolInput.value) || 0; };
-        typeRow.appendChild(tolInput);
+        const startLabel = document.createElement('span'); startLabel.className = 'text-gray-500 ml-2'; startLabel.textContent = '開始:'; typeRow.appendChild(startLabel);
+        const startInput = document.createElement('input'); startInput.type = 'time'; startInput.value = rule.startTime || '06:00'; startInput.className = 'border border-gray-300 rounded px-2 py-0.5 text-sm focus:outline-none focus:border-[#1e3a5f]'; startInput.oninput = () => { rule.startTime = startInput.value; }; typeRow.appendChild(startInput);
+        const endLabel = document.createElement('span'); endLabel.className = 'text-gray-500 ml-2'; endLabel.textContent = '終了:'; typeRow.appendChild(endLabel);
+        const endInput = document.createElement('input'); endInput.type = 'time'; endInput.value = rule.endTime || '22:00'; endInput.className = 'border border-gray-300 rounded px-2 py-0.5 text-sm focus:outline-none focus:border-[#1e3a5f]'; endInput.oninput = () => { rule.endTime = endInput.value; }; typeRow.appendChild(endInput);
+        const tolLabel = document.createElement('span'); tolLabel.className = 'text-gray-500 ml-2'; tolLabel.textContent = '許容(分):'; typeRow.appendChild(tolLabel);
+        const tolInput = document.createElement('input'); tolInput.type = 'number'; tolInput.min = '0'; tolInput.value = rule.toleranceMinutes || 0; tolInput.className = 'border border-gray-300 rounded px-1 py-0.5 text-sm w-14 focus:outline-none focus:border-[#1e3a5f]'; tolInput.oninput = () => { rule.toleranceMinutes = parseInt(tolInput.value) || 0; }; typeRow.appendChild(tolInput);
       }
-      
-      row.appendChild(typeRow);
-      box.appendChild(row);
+      row.appendChild(typeRow); box.appendChild(row);
     });
-    
-    const btnAdd = document.createElement('button');
-    btnAdd.textContent = '+ ルール追加';
-    btnAdd.className = 'text-sm text-[#1e3a5f] hover:underline';
-    btnAdd.onclick = () => { rulesList.push({ label: '', type: 'do' }); render(); };
-    box.appendChild(btnAdd);
-    
+    const btnAdd = document.createElement('button'); btnAdd.textContent = '+ ルール追加'; btnAdd.className = 'text-sm text-[#1e3a5f] hover:underline'; btnAdd.onclick = () => { rulesList.push({ label: '', type: 'do' }); render(); }; box.appendChild(btnAdd);
     app.appendChild(box);
   };
-  
   renderGroup('平日のルール', state.editingRulesWeekday);
   renderGroup('休日のルール', state.editingRulesHoliday);
-  
-  const btnSave = document.createElement('button');
-  btnSave.textContent = '保存';
-  btnSave.className = 'btn-primary px-4 py-2 rounded text-sm';
-  btnSave.onclick = async () => {
-    try {
-      state.data = await apiCall('saveRules', {
-        id: state.selectedUserId,
-        weekday: state.editingRulesWeekday.filter(r => r.label.trim()),
-        holiday: state.editingRulesHoliday.filter(r => r.label.trim())
-      });
-      state.view = 'users';
-      render();
-    } catch (e) { alert(e.message); }
-  };
+  const btnSave = document.createElement('button'); btnSave.textContent = '保存'; btnSave.className = 'btn-primary px-4 py-2 rounded text-sm';
+  btnSave.onclick = async () => { try { state.data = await apiCall('saveRules', { id: state.selectedUserId, weekday: state.editingRulesWeekday.filter(r => r.label.trim()), holiday: state.editingRulesHoliday.filter(r => r.label.trim()) }); state.view = 'users'; render(); } catch (e) { alert(e.message); } };
   app.appendChild(btnSave);
 }
 
 function renderCalendar(app) {
-  const back = document.createElement('button');
-  back.textContent = '← 戻る';
-  back.className = 'btn-secondary px-3 py-1.5 rounded text-sm mb-4';
-  back.onclick = () => { state.view = 'users'; render(); };
-  app.appendChild(back);
+  const back = document.createElement('button'); back.textContent = '← 戻る'; back.className = 'btn-secondary px-3 py-1.5 rounded text-sm mb-4'; back.onclick = () => { state.view = 'users'; render(); }; app.appendChild(back);
+  const u = state.data.users[state.selectedUserId]; const title = document.createElement('h2'); title.className = 'text-lg font-bold text-[#1e3a5f] mb-3'; title.textContent = `${u.name}のカレンダー`; app.appendChild(title);
   
-  const u = state.data.users[state.selectedUserId];
-  const title = document.createElement('h2');
-  title.className = 'text-lg font-bold text-[#1e3a5f] mb-3';
-  title.textContent = `${u.name}のカレンダー`;
-  app.appendChild(title);
-  
-  const monthNav = document.createElement('div');
-  monthNav.className = 'flex items-center justify-between mb-3 gap-2';
-  const btnPrev = document.createElement('button');
-  btnPrev.textContent = '‹ 前月';
-  btnPrev.className = 'btn-secondary px-3 py-1 rounded text-sm';
-  btnPrev.onclick = () => {
-    state.calendarMonth--;
-    if (state.calendarMonth < 0) { state.calendarMonth = 11; state.calendarYear--; }
-    render();
-  };
+  const monthNav = document.createElement('div'); monthNav.className = 'flex items-center justify-between mb-3 gap-2';
+  const btnPrev = document.createElement('button'); btnPrev.textContent = '‹ 前月'; btnPrev.className = 'btn-secondary px-3 py-1 rounded text-sm';
+  btnPrev.onclick = () => { state.calendarMonth--; if (state.calendarMonth < 0) { state.calendarMonth = 11; state.calendarYear--; } render(); };
   monthNav.appendChild(btnPrev);
-  const monthLabel = document.createElement('div');
-  monthLabel.className = 'font-semibold text-base';
-  monthLabel.textContent = `${state.calendarYear}年${state.calendarMonth + 1}月`;
-  monthNav.appendChild(monthLabel);
-  const btnNext = document.createElement('button');
-  btnNext.textContent = '翌月 ›';
-  btnNext.className = 'btn-secondary px-3 py-1 rounded text-sm';
-  btnNext.onclick = () => {
-    state.calendarMonth++;
-    if (state.calendarMonth > 11) { state.calendarMonth = 0; state.calendarYear++; }
-    render();
-  };
+  const monthLabel = document.createElement('div'); monthLabel.className = 'font-semibold text-base'; monthLabel.textContent = `${state.calendarYear}年${state.calendarMonth + 1}月`; monthNav.appendChild(monthLabel);
+  const btnNext = document.createElement('button'); btnNext.textContent = '翌月 ›'; btnNext.className = 'btn-secondary px-3 py-1 rounded text-sm';
+  btnNext.onclick = () => { state.calendarMonth++; if (state.calendarMonth > 11) { state.calendarMonth = 0; state.calendarYear++; } render(); };
   monthNav.appendChild(btnNext);
+  const btnToday2 = document.createElement('button'); btnToday2.textContent = '今月'; btnToday2.className = 'btn-secondary px-3 py-1 rounded text-sm';
+  btnToday2.onclick = () => { const now = new Date(); state.calendarYear = now.getFullYear(); state.calendarMonth = now.getMonth(); render(); };
+  monthNav.appendChild(btnToday2);
+  const btnPick = document.createElement('button'); btnPick.textContent = '月を指定'; btnPick.className = 'btn-secondary px-3 py-1 rounded text-sm';
+  btnPick.onclick = () => { showMonthPickerModal(); };
+  monthNav.appendChild(btnPick);
   app.appendChild(monthNav);
   
-  const pointInfo = document.createElement('div');
-  pointInfo.className = 'text-sm text-gray-500 mb-3';
-  pointInfo.textContent = `ポイント: ${state.data.points[state.selectedUserId] || 0}/${CONFIG.REQUIRED_DAYS}`;
-  app.appendChild(pointInfo);
+  const pointInfo = document.createElement('div'); pointInfo.className = 'text-sm text-gray-500 mb-3';
+  const reqDays = u.requiredDays || CONFIG.DEFAULT_REQUIRED_DAYS;
+  pointInfo.textContent = `ポイント: ${state.data.points[state.selectedUserId] || 0}/${reqDays}`; app.appendChild(pointInfo);
   
-  const grid = document.createElement('div');
-  grid.className = 'grid grid-cols-7 gap-px bg-gray-200 rounded-lg overflow-hidden';
-  const days = ['日', '月', '火', '水', '木', '金', '土'];
-  days.forEach(d => {
-    const h = document.createElement('div');
-    h.className = 'bg-gray-100 text-center text-xs sm:text-sm font-medium text-gray-500 py-1 sm:py-2';
-    h.textContent = d;
-    grid.appendChild(h);
-  });
+  const grid = document.createElement('div'); grid.className = 'grid grid-cols-7 gap-px bg-gray-200 rounded-lg overflow-hidden';
+  const days = ['日', '月', '火', '水', '木', '金', '土']; days.forEach(d => { const h = document.createElement('div'); h.className = 'bg-gray-100 text-center text-xs sm:text-sm font-medium text-gray-500 py-1 sm:py-2'; h.textContent = d; grid.appendChild(h); });
   
-  const firstDay = new Date(state.calendarYear, state.calendarMonth, 1);
-  const lastDay = new Date(state.calendarYear, state.calendarMonth + 1, 0);
-  const startPad = firstDay.getDay();
-  const totalDays = lastDay.getDate();
-  const todayKey = getTodayKey();
-  const preHolidays = state.data.preHolidays || [];
+  const firstDay = new Date(state.calendarYear, state.calendarMonth, 1); const lastDay = new Date(state.calendarYear, state.calendarMonth + 1, 0);
+  const startPad = firstDay.getDay(); const totalDays = lastDay.getDate(); const todayKey = getTodayKey(); const preHolidays = state.data.preHolidays || [];
   
-  for (let i = 0; i < startPad; i++) {
-    const empty = document.createElement('div');
-    empty.className = 'bg-white cal-cell';
-    grid.appendChild(empty);
-  }
-  
+  for (let i = 0; i < startPad; i++) { const empty = document.createElement('div'); empty.className = 'bg-white cal-cell'; grid.appendChild(empty); }
   for (let d = 1; d <= totalDays; d++) {
-    const dateKey = dayKey(state.calendarYear, state.calendarMonth, d);
-    const dayData = (state.data.days[dateKey] || {})[state.selectedUserId];
-    const isToday = dateKey === todayKey;
-    
-    const cell = document.createElement('div');
-    cell.className = 'bg-white cal-cell p-1 sm:p-2 cursor-pointer hover:bg-gray-50 transition relative';
+    const dateKey = dayKey(state.calendarYear, state.calendarMonth, d); const dayData = (state.data.days[dateKey] || {})[state.selectedUserId]; const isToday = dateKey === todayKey;
+    const cell = document.createElement('div'); cell.className = 'bg-white cal-cell p-1 sm:p-2 cursor-pointer hover:bg-gray-50 transition relative';
     if (isToday) cell.classList.add('cell-today');
-    if (dayData) {
-      if (dayData.confirmed && dayData.allSatisfied) cell.classList.add('cell-achieved');
-      else if (dayData.confirmed && !dayData.allSatisfied) cell.classList.add('cell-unachieved');
-      if (dayData.received) cell.classList.add('cell-received');
-    }
-    
-    const dayNum = document.createElement('div');
-    dayNum.className = 'text-xs sm:text-sm font-medium';
-    dayNum.textContent = d;
-    cell.appendChild(dayNum);
-    
-    if (dayData && dayData.confirmed && dayData.allSatisfied) {
-      const mark = document.createElement('div');
-      mark.className = 'text-green-600 text-xs sm:text-sm font-bold';
-      mark.textContent = '✓';
-      cell.appendChild(mark);
-    } else if (dayData && dayData.confirmed && !dayData.allSatisfied) {
-      const mark = document.createElement('div');
-      mark.className = 'text-amber-600 text-xs sm:text-sm font-bold';
-      mark.textContent = '未';
-      cell.appendChild(mark);
-    }
-    
-    if (dayData && dayData.received) {
-      const mark = document.createElement('div');
-      mark.className = 'text-blue-600 text-xs sm:text-sm font-bold';
-      mark.textContent = '受取済';
-      cell.appendChild(mark);
-    }
-    
-    cell.onclick = () => {
-      state.selectedDate = { y: state.calendarYear, m: state.calendarMonth, d };
-      state.view = 'detail';
-      render();
-    };
+    if (dayData) { if (dayData.confirmed && dayData.allSatisfied) cell.classList.add('cell-achieved'); else if (dayData.confirmed && !dayData.allSatisfied) cell.classList.add('cell-unachieved'); if (dayData.received) cell.classList.add('cell-received'); }
+    const dayNum = document.createElement('div'); dayNum.className = 'text-xs sm:text-sm font-medium'; dayNum.textContent = d; cell.appendChild(dayNum);
+    if (dayData && dayData.confirmed && dayData.allSatisfied) { const mark = document.createElement('div'); mark.className = 'text-green-600 text-xs sm:text-sm font-bold'; mark.textContent = '✓'; cell.appendChild(mark); }
+    else if (dayData && dayData.confirmed && !dayData.allSatisfied) { const mark = document.createElement('div'); mark.className = 'text-amber-600 text-xs sm:text-sm font-bold'; mark.textContent = '未'; cell.appendChild(mark); }
+    if (dayData && dayData.received) { const mark = document.createElement('div'); mark.className = 'text-blue-600 text-xs sm:text-sm font-bold'; mark.textContent = '受取証明'; cell.appendChild(mark); if (dayData.receivedTime) { const tm = document.createElement('div'); tm.className = 'text-xs text-gray-500 truncate'; tm.textContent = dayData.receivedTime; cell.appendChild(tm); } }
+    if (dayData && dayData.confirmed && dayData.rules) { dayData.rules.forEach(rule => { if (rule.time) { const timeMark = document.createElement('div'); timeMark.className = 'text-xs text-gray-500 truncate'; timeMark.textContent = rule.time; cell.appendChild(timeMark); } }); }
+    cell.onclick = () => { state.selectedDate = { y: state.calendarYear, m: state.calendarMonth, d }; state.view = 'detail'; render(); };
     grid.appendChild(cell);
   }
-  
   app.appendChild(grid);
 }
 
+function showMonthPickerModal() {
+  const overlay = document.createElement('div'); overlay.className = 'fixed inset-0 modal-overlay flex items-center justify-center z-50 p-4'; overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  const modal = document.createElement('div'); modal.className = 'bg-white rounded-lg shadow-xl p-6 w-full max-w-sm fade-in';
+  const title = document.createElement('h2'); title.className = 'text-lg font-bold mb-4 text-[#1e3a5f]'; title.textContent = '表示する月を選択'; modal.appendChild(title);
+  const label = document.createElement('label'); label.className = 'block text-sm font-medium mb-1'; label.textContent = '年月'; modal.appendChild(label);
+  const inputMonth = document.createElement('input'); inputMonth.type = 'month'; inputMonth.value = `${state.calendarYear}-${String(state.calendarMonth+1).padStart(2,'0')}`; inputMonth.min = `${CONFIG.CALENDAR_MIN_YEAR}-01`; inputMonth.max = `${CONFIG.CALENDAR_MAX_YEAR}-12`;
+  inputMonth.className = 'w-full border border-gray-300 rounded px-3 py-2 mb-4 text-sm focus:outline-none focus:border-[#1e3a5f]'; modal.appendChild(inputMonth);
+  const btns = document.createElement('div'); btns.className = 'flex gap-2 justify-end';
+  const btnCancel = document.createElement('button'); btnCancel.textContent = 'キャンセル'; btnCancel.className = 'btn-secondary px-4 py-2 rounded text-sm'; btnCancel.onclick = () => overlay.remove(); btns.appendChild(btnCancel);
+  const btnGo = document.createElement('button'); btnGo.textContent = '表示'; btnGo.className = 'btn-primary px-4 py-2 rounded text-sm';
+  btnGo.onclick = () => { const [y, m] = inputMonth.value.split('-').map(Number); state.calendarYear = y; state.calendarMonth = m - 1; overlay.remove(); render(); };
+  btns.appendChild(btnGo); modal.appendChild(btns); overlay.appendChild(modal); document.body.appendChild(overlay);
+}
+
 function renderDetail(app) {
-  const back = document.createElement('button');
-  back.textContent = '← カレンダーに戻る';
-  back.className = 'btn-secondary px-3 py-1.5 rounded text-sm mb-4';
-  back.onclick = () => { state.view = 'calendar'; render(); };
-  app.appendChild(back);
-  
-  const u = state.data.users[state.selectedUserId];
-  const { y, m, d } = state.selectedDate;
-  const dateKey = dayKey(y, m, d);
+  const back = document.createElement('button'); back.textContent = '← カレンダーに戻る'; back.className = 'btn-secondary px-3 py-1.5 rounded text-sm mb-4'; back.onclick = () => { state.view = 'calendar'; render(); }; app.appendChild(back);
+  const u = state.data.users[state.selectedUserId]; const { y, m, d } = state.selectedDate; const dateKey = dayKey(y, m, d);
   const dayData = (state.data.days[dateKey] || {})[state.selectedUserId] || {};
-  // 休前日判定: 翌日が休日（土日またはpreHolidaysに登録）なら今日は休日扱い
-  const nextDate = new Date(y, m, d + 1);
-  const nextKey = dayKey(nextDate.getFullYear(), nextDate.getMonth(), nextDate.getDate());
+  const nextDate = new Date(y, m, d + 1); const nextKey = dayKey(nextDate.getFullYear(), nextDate.getMonth(), nextDate.getDate());
   const isNextHoliday = isWeekend(nextDate) || ((state.data.preHolidays || []).includes(nextKey));
   const isHoliday = isWeekend(new Date(y, m, d)) || isNextHoliday;
-  const rulesBase = (state.data.rules[state.selectedUserId] || {});
-  const ruleSet = (isHoliday ? rulesBase.holiday : rulesBase.weekday) || [];
+  const rulesBase = (state.data.rules[state.selectedUserId] || {}); const ruleSet = (isHoliday ? rulesBase.holiday : rulesBase.weekday) || [];
   const isReadOnly = dayData.confirmed;
   
-  if (!dayData.rules || dayData.rules.length === 0) {
-    dayData.rules = ruleSet.map(r => ({
-      label: r.label, type: r.type, done: false, time: '',
-      startTime: r.startTime, endTime: r.endTime
-    }));
+  if (!dayData.rules || dayData.rules.length === 0) { dayData.rules = ruleSet.map(r => ({ label: r.label, type: r.type, done: false, time: '', startTime: r.startTime, endTime: r.endTime })); }
+  if (dayData.draftMemo === undefined) { dayData.draftMemo = dayData.memo || ''; }
+  if (dayData.todos === undefined) { dayData.todos = []; }
+  
+  const title = document.createElement('h2'); title.className = 'text-lg font-bold text-[#1e3a5f] mb-3'; title.textContent = `${u.name} - ${y}年${m+1}月${d}日`; app.appendChild(title);
+  
+  // 受取証明バナー
+  if (dayData.received) {
+    const banner = document.createElement('div'); banner.className = 'bg-blue-50 border border-blue-200 rounded p-3 text-center mb-4';
+    banner.innerHTML = `<div class="text-blue-600 font-bold">受取証明 ${dayData.receivedTime || ''}</div>`; app.appendChild(banner);
   }
   
-  if (dayData.draftMemo === undefined) {
-    dayData.draftMemo = dayData.memo || '';
-  }
-  
-  const title = document.createElement('h2');
-  title.className = 'text-lg font-bold text-[#1e3a5f] mb-3';
-  title.textContent = `${u.name} - ${y}年${m+1}月${d}日`;
-  app.appendChild(title);
-  
+  // 達成/未達成バナー
   if (isReadOnly) {
     const banner = document.createElement('div');
-    if (dayData.allSatisfied) {
-      banner.className = 'bg-green-50 border border-green-200 rounded p-3 text-center mb-4';
-      banner.innerHTML = '<div class="text-green-600 font-bold">✓ 達成済み（+1ポイント）</div>';
-    } else {
-      banner.className = 'bg-amber-50 border border-amber-200 rounded p-3 text-center mb-4';
-      banner.innerHTML = '<div class="text-amber-600 font-bold">未達成</div>';
-    }
+    if (dayData.allSatisfied) { banner.className = 'bg-green-50 border border-green-200 rounded p-3 text-center mb-4'; banner.innerHTML = '<div class="text-green-600 font-bold">✓ 達成済み（+1ポイント）</div>'; }
+    else { banner.className = 'bg-amber-50 border border-amber-200 rounded p-3 text-center mb-4'; banner.innerHTML = '<div class="text-amber-600 font-bold">未達成</div>'; }
     app.appendChild(banner);
   }
   
-  const ruleBox = document.createElement('div');
-  ruleBox.className = 'bg-gray-50 border border-gray-200 rounded p-3 mb-4';
-  const ruleLabel = document.createElement('div');
-  ruleLabel.className = 'text-xs text-gray-500 mb-2';
-  ruleLabel.textContent = `【${isHoliday ? '休前日・休日' : '平日'}】ルール`;
-  ruleBox.appendChild(ruleLabel);
+  // ルール欄
+  const ruleBox = document.createElement('div'); ruleBox.className = 'bg-gray-50 border border-gray-200 rounded p-3 mb-4';
+  const ruleLabel = document.createElement('div'); ruleLabel.className = 'text-xs text-gray-500 mb-2'; ruleLabel.textContent = `【${isHoliday ? '休前日・休日' : '平日'}】ルール`; ruleBox.appendChild(ruleLabel);
   
   (dayData.rules || []).forEach((rule, idx) => {
-    const satisfied = isRuleSatisfied(rule);
-    const row = document.createElement('div');
-    row.className = 'border-b border-gray-100 last:border-b-0 py-2';
-    
-    const topRow = document.createElement('div');
-    topRow.className = 'flex items-center gap-2 flex-wrap';
-    
-    if (isReadOnly) {
-      const icon = document.createElement('span');
-      icon.className = `text-sm font-bold ${satisfied ? 'text-green-600' : 'text-red-400'}`;
-      icon.textContent = satisfied ? '✓' : '✗';
-      topRow.appendChild(icon);
-    } else {
-      const cb = document.createElement('input');
-      cb.type = 'checkbox';
-      cb.checked = rule.done;
-      cb.className = 'w-4 h-4 accent-[#1e3a5f]';
-      cb.onchange = async () => {
-        rule.done = cb.checked;
-        if (!rule.done) rule.time = '';
-        state.data = await apiCall('saveDay', { userId: state.selectedUserId, year: y, month: m, day: d, rules: dayData.rules, memo: dayData.memo });
-        render();
-      };
-      topRow.appendChild(cb);
-    }
-    
-    const label = document.createElement('span');
-    label.className = `text-sm flex-1 ${rule.done ? 'line-through text-gray-400' : ''}`;
-    label.textContent = rule.label;
-    topRow.appendChild(label);
-    
-    if (rule.type === 'time_limit' && rule.startTime && rule.endTime) {
-      const range = document.createElement('span');
-      range.className = 'text-xs text-gray-400';
-      range.textContent = `${rule.startTime}〜${rule.endTime}`;
-      topRow.appendChild(range);
-    }
-    
+    const satisfied = isRuleSatisfied(rule); const row = document.createElement('div'); row.className = 'border-b border-gray-100 last:border-b-0 py-2';
+    const topRow = document.createElement('div'); topRow.className = 'flex items-center gap-2 flex-wrap';
+    if (isReadOnly) { const icon = document.createElement('span'); icon.className = `text-sm font-bold ${satisfied ? 'text-green-600' : 'text-red-400'}`; icon.textContent = satisfied ? '✓' : '✗'; topRow.appendChild(icon); }
+    else { const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = rule.done; cb.className = 'w-4 h-4 accent-[#1e3a5f]'; cb.onchange = async () => { rule.done = cb.checked; if (!rule.done) rule.time = ''; state.data = await apiCall('saveDay', { userId: state.selectedUserId, year: y, month: m, day: d, rules: dayData.rules, memo: dayData.memo, todos: dayData.todos || [] }); render(); }; topRow.appendChild(cb); }
+    const label = document.createElement('span'); label.className = `text-sm flex-1 ${rule.done ? 'line-through text-gray-400' : ''}`; label.textContent = rule.label; topRow.appendChild(label);
+    if (rule.type === 'time_limit' && rule.startTime && rule.endTime) { const range = document.createElement('span'); range.className = 'text-xs text-gray-400'; range.textContent = `${rule.startTime}〜${rule.endTime}`; topRow.appendChild(range); }
+    if (isReadOnly && rule.time) { const timeInfo = document.createElement('span'); timeInfo.className = 'text-xs text-gray-500'; timeInfo.textContent = `(達成時間 ${rule.time})`; topRow.appendChild(timeInfo); }
     row.appendChild(topRow);
-    
-    if (!isReadOnly && rule.done && rule.type === 'time_limit') {
-      const timeRow = document.createElement('div');
-      timeRow.className = 'flex items-center gap-2 mt-1 ml-6';
-      const timeInput = document.createElement('input');
-      timeInput.type = 'time';
-      timeInput.value = rule.time || '';
-      timeInput.className = 'border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:border-[#1e3a5f]';
-      timeInput.oninput = () => {
-        rule.time = timeInput.value;
-        apiCall('saveDay', { userId: state.selectedUserId, year: y, month: m, day: d, rules: dayData.rules, memo: dayData.memo });
-      };
-      timeRow.appendChild(timeInput);
-      
-      const btnNow = document.createElement('button');
-      btnNow.textContent = '自動入力';
-      btnNow.className = 'text-xs bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded';
-      btnNow.onclick = () => {
-        const now = new Date();
-        rule.time = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
-        timeInput.value = rule.time;
-        apiCall('saveDay', { userId: state.selectedUserId, year: y, month: m, day: d, rules: dayData.rules, memo: dayData.memo });
-        render();
-      };
-      timeRow.appendChild(btnNow);
-      
-      const btnForce = document.createElement('button');
-      btnForce.textContent = rule.forceSatisfied ? '✓ 強制達成' : '強制達成';
-      btnForce.className = rule.forceSatisfied
-        ? 'text-xs bg-green-500 text-white px-2 py-1 rounded'
-        : 'text-xs bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded';
-      btnForce.onclick = async () => {
-        rule.forceSatisfied = !rule.forceSatisfied;
-        state.data = await apiCall('saveDay', { userId: state.selectedUserId, year: y, month: m, day: d, rules: dayData.rules, memo: dayData.memo });
-        render();
-      };
-      timeRow.appendChild(btnForce);
-      
+    if (!isReadOnly && rule.done) {
+      const timeRow = document.createElement('div'); timeRow.className = 'flex items-center gap-2 mt-1 ml-6';
+      const timeInput = document.createElement('input'); timeInput.type = 'time'; timeInput.value = rule.time || ''; timeInput.className = 'border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:border-[#1e3a5f]';
+      timeInput.oninput = () => { rule.time = timeInput.value; apiCall('saveDay', { userId: state.selectedUserId, year: y, month: m, day: d, rules: dayData.rules, memo: dayData.memo, todos: dayData.todos || [] }); }; timeRow.appendChild(timeInput);
+      const btnNow = document.createElement('button'); btnNow.textContent = '自動入力'; btnNow.className = 'text-xs bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded';
+      btnNow.onclick = () => { const now = new Date(); rule.time = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`; timeInput.value = rule.time; apiCall('saveDay', { userId: state.selectedUserId, year: y, month: m, day: d, rules: dayData.rules, memo: dayData.memo, todos: dayData.todos || [] }); render(); }; timeRow.appendChild(btnNow);
+      if (rule.type === 'time_limit') { const btnForce = document.createElement('button'); btnForce.textContent = rule.forceSatisfied ? '✓ 強制達成' : '強制達成'; btnForce.className = rule.forceSatisfied ? 'text-xs bg-green-500 text-white px-2 py-1 rounded' : 'text-xs bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded'; btnForce.onclick = async () => { rule.forceSatisfied = !rule.forceSatisfied; state.data = await apiCall('saveDay', { userId: state.selectedUserId, year: y, month: m, day: d, rules: dayData.rules, memo: dayData.memo, todos: dayData.todos || [] }); render(); }; timeRow.appendChild(btnForce); }
       row.appendChild(timeRow);
     }
-    
     ruleBox.appendChild(row);
   });
-  
   app.appendChild(ruleBox);
   
-  const memoGroup = document.createElement('div');
-  const memoLabel = document.createElement('label');
-  memoLabel.className = 'block text-sm font-medium mb-1';
-  memoLabel.textContent = 'メモ';
-  memoGroup.appendChild(memoLabel);
+  // TODO セクション
+  (function renderTodoSection() {
+    const todos = dayData.todos || []; const todoBox = document.createElement('div'); todoBox.className = 'bg-gray-50 border border-gray-200 rounded p-3 mb-4';
+    const todoTitle = document.createElement('div'); todoTitle.className = 'text-xs text-gray-500 mb-2'; todoTitle.textContent = 'TODO'; todoBox.appendChild(todoTitle);
+    todos.forEach((todo, idx) => {
+      const todoRow = document.createElement('div'); todoRow.className = 'border-b border-gray-100 last:border-b-0 py-2';
+      const todoTop = document.createElement('div'); todoTop.className = 'flex items-center gap-2 flex-wrap';
+      if (isReadOnly) { const icon = document.createElement('span'); icon.className = `text-sm font-bold ${todo.done ? 'text-green-600' : 'text-red-500'}`; icon.textContent = todo.done ? '✓' : '☒'; todoTop.appendChild(icon); const todoLbl = document.createElement('span'); todoLbl.className = 'text-sm flex-1'; todoLbl.textContent = todo.label; todoTop.appendChild(todoLbl); if (todo.time) { const todoTime = document.createElement('span'); todoTime.className = 'text-xs text-gray-500'; todoTime.textContent = todo.time; todoTop.appendChild(todoTime); } }
+      else { const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = todo.done; cb.className = 'w-4 h-4 accent-[#1e3a5f]'; cb.onchange = async () => { todo.done = cb.checked; state.data = await apiCall('saveDay', { userId: state.selectedUserId, year: y, month: m, day: d, rules: dayData.rules, memo: dayData.memo, todos }); render(); }; todoTop.appendChild(cb);
+        const todoInp = document.createElement('input'); todoInp.type = 'text'; todoInp.value = todo.label; todoInp.placeholder = '臨時タスク'; todoInp.className = 'flex-1 border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:border-[#1e3a5f]'; todoInp.oninput = () => { todo.label = todoInp.value; }; todoTop.appendChild(todoInp);
+        const todoTimeInp = document.createElement('input'); todoTimeInp.type = 'time'; todoTimeInp.value = todo.time || ''; todoTimeInp.className = 'border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:border-[#1e3a5f]'; todoTimeInp.oninput = () => { todo.time = todoTimeInp.value; }; todoTop.appendChild(todoTimeInp);
+        const btnDel = document.createElement('button'); btnDel.textContent = '×'; btnDel.className = 'text-red-500 font-bold px-2'; btnDel.onclick = () => { todos.splice(idx, 1); render(); }; todoTop.appendChild(btnDel); }
+      todoRow.appendChild(todoTop); todoBox.appendChild(todoRow);
+    });
+    if (!isReadOnly) { const btnAddTodo = document.createElement('button'); btnAddTodo.textContent = '＋ 臨時タスク追加'; btnAddTodo.className = 'text-sm text-[#1e3a5f] hover:underline mt-2'; btnAddTodo.onclick = () => { todos.push({ label: '', done: false, time: '' }); render(); }; todoBox.appendChild(btnAddTodo); }
+    if (todos.length > 0 || !isReadOnly) { app.appendChild(todoBox); }
+  })();
   
-  if (isReadOnly) {
-    const memoText = document.createElement('div');
-    memoText.className = 'text-sm text-gray-700 bg-white border border-gray-200 rounded p-2 min-h-[2.5rem] mb-4';
-    memoText.textContent = dayData.memo || '（メモなし）';
-    memoGroup.appendChild(memoText);
-  } else {
-    const isMemoDirty = dayData.draftMemo !== dayData.memo;
-    
-    const memoInput = document.createElement('textarea');
-    memoInput.value = dayData.draftMemo;
-    memoInput.rows = 2;
-    memoInput.className = 'w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-[#1e3a5f] mb-2';
-    memoInput.oninput = () => {
-      dayData.draftMemo = memoInput.value;
-      memoBtn.className = dayData.draftMemo !== dayData.memo
-        ? 'btn-success text-xs px-3 py-1 rounded'
-        : 'btn-secondary text-xs px-3 py-1 rounded';
-    };
-    memoGroup.appendChild(memoInput);
-    
-    const memoBtn = document.createElement('button');
-    memoBtn.textContent = 'メモを保存';
-    memoBtn.className = isMemoDirty
-      ? 'btn-success text-xs px-3 py-1 rounded'
-      : 'btn-secondary text-xs px-3 py-1 rounded';
-    memoBtn.onclick = async () => {
-      dayData.memo = dayData.draftMemo;
-      state.data = await apiCall('saveDay', { userId: state.selectedUserId, year: y, month: m, day: d, rules: dayData.rules, memo: dayData.memo });
-      memoBtn.className = 'btn-secondary text-xs px-3 py-1 rounded';
-      render();
-    };
-    memoGroup.appendChild(memoBtn);
+  // メモ
+  const memoGroup = document.createElement('div'); const memoLabel = document.createElement('label'); memoLabel.className = 'block text-sm font-medium mb-1'; memoLabel.textContent = 'メモ'; memoGroup.appendChild(memoLabel);
+  if (isReadOnly) { const memoText = document.createElement('div'); memoText.className = 'text-sm text-gray-700 bg-white border border-gray-200 rounded p-2 min-h-[2.5rem] mb-4'; memoText.textContent = dayData.memo || '（メモなし）'; memoGroup.appendChild(memoText); }
+  else { const isMemoDirty = dayData.draftMemo !== dayData.memo;
+    const memoInput = document.createElement('textarea'); memoInput.value = dayData.draftMemo; memoInput.rows = 2; memoInput.className = 'w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-[#1e3a5f] mb-2';
+    memoInput.oninput = () => { dayData.draftMemo = memoInput.value; memoBtn.className = dayData.draftMemo !== dayData.memo ? 'btn-success text-xs px-3 py-1 rounded' : 'btn-secondary text-xs px-3 py-1 rounded'; }; memoGroup.appendChild(memoInput);
+    const memoBtn = document.createElement('button'); memoBtn.textContent = 'メモを保存'; memoBtn.className = isMemoDirty ? 'btn-success text-xs px-3 py-1 rounded' : 'btn-secondary text-xs px-3 py-1 rounded';
+    memoBtn.onclick = async () => { dayData.memo = dayData.draftMemo; state.data = await apiCall('saveDay', { userId: state.selectedUserId, year: y, month: m, day: d, rules: dayData.rules, memo: dayData.memo, todos: dayData.todos || [] }); memoBtn.className = 'btn-secondary text-xs px-3 py-1 rounded'; render(); }; memoGroup.appendChild(memoBtn);
   }
   app.appendChild(memoGroup);
   
+  // 確定前チェック
   if (!isReadOnly && (dayData.rules || []).length > 0) {
-    const confirmBox = document.createElement('div');
-    confirmBox.className = 'bg-white border border-gray-200 rounded p-3 mb-3';
-    const confirmTitle = document.createElement('div');
-    confirmTitle.className = 'text-sm font-semibold mb-2';
-    confirmTitle.textContent = '確定前チェック';
-    confirmBox.appendChild(confirmTitle);
-    
-    const statusArea = document.createElement('div');
-    statusArea.className = 'mb-2';
-    statusArea.innerHTML = '<div class="text-xs text-gray-400">「最新状態を確認」を押してチェックしてください</div>';
-    confirmBox.appendChild(statusArea);
-    
-    const btnCheck = document.createElement('button');
-    btnCheck.textContent = '最新状態を確認';
-    btnCheck.className = 'btn-secondary text-sm px-4 py-2 rounded w-full mb-2';
+    const confirmBox = document.createElement('div'); confirmBox.className = 'bg-white border border-gray-200 rounded p-3 mb-3';
+    const confirmTitle = document.createElement('div'); confirmTitle.className = 'text-sm font-semibold mb-2'; confirmTitle.textContent = '確定前チェック'; confirmBox.appendChild(confirmTitle);
+    const statusArea = document.createElement('div'); statusArea.className = 'mb-2'; statusArea.innerHTML = '<div class="text-xs text-gray-400">「最新状態を確認」を押してチェックしてください</div>'; confirmBox.appendChild(statusArea);
+    const btnCheck = document.createElement('button'); btnCheck.textContent = '最新状態を確認'; btnCheck.className = 'btn-secondary text-sm px-4 py-2 rounded w-full mb-2';
     btnCheck.onclick = async () => {
-      btnCheck.textContent = '確認中...';
-      btnCheck.className = 'btn-disabled text-sm px-4 py-2 rounded w-full mb-2';
+      btnCheck.textContent = '確認中...'; btnCheck.className = 'btn-disabled text-sm px-4 py-2 rounded w-full mb-2';
       try {
-        state.data = await loadData();
-        const freshDayData = (state.data.days[dateKey] || {})[state.selectedUserId] || {};
-        if (dayData.draftMemo !== dayData.memo) {
-          dayData.memo = dayData.draftMemo;
-          await apiCall('saveDay', { userId: state.selectedUserId, year: y, month: m, day: d, rules: dayData.rules, memo: dayData.memo });
-        }
-        const freshRules = freshDayData.rules || dayData.rules || [];
-        dayData.rules = freshRules;
-        
-        const freshStatuses = freshRules.map(r => ({
-          satisfied: isRuleSatisfied(r)
-        }));
-        const freshAllSatisfied = freshStatuses.every(rs => rs.satisfied);
-        
-        statusArea.innerHTML = '';
-        freshStatuses.forEach((rs, idx) => {
-          const row = document.createElement('div');
-          row.className = 'flex items-center gap-2 py-1 text-sm';
-          const icon = document.createElement('span');
-          icon.className = `font-bold ${rs.satisfied ? 'text-green-600' : 'text-red-500'}`;
-          icon.textContent = rs.satisfied ? '✓' : '✗';
-          row.appendChild(icon);
-          const label = document.createElement('span');
-          label.textContent = (freshRules[idx] || {}).label;
-          row.appendChild(label);
-          statusArea.appendChild(row);
-        });
-        const summary = document.createElement('div');
-        summary.className = `text-xs mt-2 ${freshAllSatisfied ? 'text-green-600' : 'text-amber-600'}`;
-        summary.textContent = freshAllSatisfied ? '全てのルールを満たしています → +1ポイント' : 'ルール未達成（ポイント付与なし）';
-        statusArea.appendChild(summary);
-        
+        state.data = await loadData(); const freshDayData = (state.data.days[dateKey] || {})[state.selectedUserId] || {};
+        if (dayData.draftMemo !== dayData.memo) { dayData.memo = dayData.draftMemo; await apiCall('saveDay', { userId: state.selectedUserId, year: y, month: m, day: d, rules: dayData.rules, memo: dayData.memo, todos: dayData.todos || [] }); }
+        const freshRules = freshDayData.rules || dayData.rules || []; dayData.rules = freshRules; const freshTodos = freshDayData.todos || dayData.todos || []; dayData.todos = freshTodos;
+        const freshStatuses = freshRules.map(r => ({ satisfied: isRuleSatisfied(r) })); const rulesAllOk = freshStatuses.every(rs => rs.satisfied); const todosAllOk = freshTodos.length === 0 || freshTodos.every(t => t.done); const freshAllSatisfied = rulesAllOk && todosAllOk;
+        statusArea.innerHTML = ''; freshStatuses.forEach((rs, idx) => { const row = document.createElement('div'); row.className = 'flex items-center gap-2 py-1 text-sm'; const icon = document.createElement('span'); icon.className = `font-bold ${rs.satisfied ? 'text-green-600' : 'text-red-500'}`; icon.textContent = rs.satisfied ? '✓' : '✗'; row.appendChild(icon); const label = document.createElement('span'); label.textContent = (freshRules[idx] || {}).label; row.appendChild(label); statusArea.appendChild(row); });
+        if (freshTodos.length > 0) { const todoHdr = document.createElement('div'); todoHdr.className = 'text-xs text-gray-500 mt-2 mb-1'; todoHdr.textContent = 'TODO'; statusArea.appendChild(todoHdr); freshTodos.forEach(t => { const trow = document.createElement('div'); trow.className = 'flex items-center gap-2 py-1 text-sm'; const icon = document.createElement('span'); icon.className = `font-bold ${t.done ? 'text-green-600' : 'text-red-500'}`; icon.textContent = t.done ? '✓' : '☒'; trow.appendChild(icon); const tl = document.createElement('span'); tl.textContent = t.label; trow.appendChild(tl); statusArea.appendChild(trow); }); }
+        const summary = document.createElement('div'); summary.className = `text-xs mt-2 ${freshAllSatisfied ? 'text-green-600' : 'text-amber-600'}`; summary.textContent = freshAllSatisfied ? '全てのルールを満たしています → +1ポイント' : 'ルール未達成（ポイント付与なし）'; statusArea.appendChild(summary);
         btnConfirm.className = freshAllSatisfied ? 'btn-success px-4 py-3 rounded text-sm w-full font-semibold' : 'btn-warning px-4 py-3 rounded text-sm w-full font-semibold';
       } catch (e) { alert(e.message); }
-      btnCheck.textContent = '最新状態を確認';
-      btnCheck.className = 'btn-secondary text-sm px-4 py-2 rounded w-full mb-2';
-    };
-    confirmBox.appendChild(btnCheck);
-    
-    const btnConfirm = document.createElement('button');
-    btnConfirm.textContent = 'この日の記録を確定';
-    btnConfirm.className = 'btn-disabled px-4 py-3 rounded text-sm w-full font-semibold';
-    btnConfirm.onclick = async () => {
-      try {
-        if (dayData.draftMemo !== dayData.memo) {
-          dayData.memo = dayData.draftMemo;
-        }
-        state.data = await loadData();
-        const freshDayData = (state.data.days[dateKey] || {})[state.selectedUserId] || {};
-        const finalRules = freshDayData.rules || dayData.rules || [];
-        const finalAllSatisfied = finalRules.every(r => isRuleSatisfied(r));
-        if (confirm(finalAllSatisfied ? '全てのルールを満たしています。確定して+1ポイント獲得しますか？' : 'ルール未達成ですが確定しますか？')) {
-          state.data = await apiCall('confirmDay', {
-            userId: state.selectedUserId, year: y, month: m, day: d,
-            allSatisfied: finalAllSatisfied
-          });
-          state.view = 'calendar';
-          render();
-        }
-      } catch (e) { alert(e.message); }
-    };
-    app.appendChild(confirmBox);
-    app.appendChild(btnConfirm);
+      btnCheck.textContent = '最新状態を確認'; btnCheck.className = 'btn-secondary text-sm px-4 py-2 rounded w-full mb-2';
+    }; confirmBox.appendChild(btnCheck);
+    const btnConfirm = document.createElement('button'); btnConfirm.textContent = 'この日の記録を確定'; btnConfirm.className = 'btn-disabled px-4 py-3 rounded text-sm w-full font-semibold';
+    btnConfirm.onclick = async () => { try { if (dayData.draftMemo !== dayData.memo) { dayData.memo = dayData.draftMemo; } await apiCall('saveDay', { userId: state.selectedUserId, year: y, month: m, day: d, rules: dayData.rules, memo: dayData.memo, todos: dayData.todos || [] }); state.data = await loadData(); const freshDayData = (state.data.days[dateKey] || {})[state.selectedUserId] || {}; const finalRules = freshDayData.rules || dayData.rules || []; const finalTodos = freshDayData.todos || dayData.todos || []; const rulesAllOk = finalRules.every(r => isRuleSatisfied(r)); const todosAllOk = finalTodos.length === 0 || finalTodos.every(t => t.done); const finalAllSatisfied = rulesAllOk && todosAllOk; if (confirm(finalAllSatisfied ? '全てのルールを満たしています。確定して+1ポイント獲得しますか？' : 'ルール未達成ですが確定しますか？')) { state.data = await apiCall('confirmDay', { userId: state.selectedUserId, year: y, month: m, day: d, allSatisfied: finalAllSatisfied }); state.view = 'calendar'; render(); } } catch (e) { alert(e.message); } };
+    app.appendChild(confirmBox); app.appendChild(btnConfirm);
   }
 }
 
 function renderHistory(app) {
   renderNav(app, true);
-  
-  const info = document.createElement('div');
-  info.className = 'text-xs text-gray-400 mb-3';
-  info.textContent = '操作ログは作成から300分有効です。取り消しは最新の操作のみ可能です。';
-  app.appendChild(info);
-  
+  const info = document.createElement('div'); info.className = 'text-xs text-gray-400 mb-3'; info.textContent = '操作ログは作成から300分有効です。取り消しは最新の操作のみ可能です。'; app.appendChild(info);
   const logs = (state.data.logs || []).filter(l => l.description).slice().reverse();
-  
-  if (logs.length === 0) {
-    const empty = document.createElement('div');
-    empty.className = 'text-center text-gray-400 py-8 text-sm';
-    empty.textContent = 'ログがありません';
-    app.appendChild(empty);
-  } else {
-    const list = document.createElement('div');
-    list.className = 'space-y-2 fade-in';
-    
-    logs.forEach((log, i) => {
-      const row = document.createElement('div');
-      row.className = 'bg-white border border-gray-200 rounded p-3 flex items-center justify-between gap-2';
-      
-      const left = document.createElement('div');
-      left.className = 'flex-1 min-w-0';
-      const actionText = document.createElement('div');
-      actionText.className = 'text-sm font-medium truncate';
-      actionText.textContent = log.description;
-      left.appendChild(actionText);
-      const tsText = document.createElement('div');
-      tsText.className = 'text-xs text-gray-400';
-      const t = new Date(log.expiresAt);
-      tsText.textContent = t.toLocaleString('ja-JP');
-      left.appendChild(tsText);
-      row.appendChild(left);
-      
-      if (i === 0) {
-        const btnUndo = document.createElement('button');
-        btnUndo.textContent = '取り消す';
-        btnUndo.className = 'btn-danger text-xs px-3 py-1 rounded shrink-0';
-        btnUndo.onclick = async () => {
-          if (confirm('最新の操作を取り消しますか？')) {
-            try {
-              state.data = await apiCall('undo', {});
-              render();
-            } catch (e) { alert(e.message); }
-          }
-        };
-        row.appendChild(btnUndo);
-      }
-      
+  if (logs.length === 0) { const empty = document.createElement('div'); empty.className = 'text-center text-gray-400 py-8 text-sm'; empty.textContent = 'ログがありません'; app.appendChild(empty); }
+  else { const list = document.createElement('div'); list.className = 'space-y-2 fade-in';
+    logs.forEach((log, i) => { const row = document.createElement('div'); row.className = 'bg-white border border-gray-200 rounded p-3 flex items-center justify-between gap-2'; const left = document.createElement('div'); left.className = 'flex-1 min-w-0'; const actionText = document.createElement('div'); actionText.className = 'text-sm font-medium truncate'; actionText.textContent = log.description; left.appendChild(actionText); const tsText = document.createElement('div'); tsText.className = 'text-xs text-gray-400'; const t = new Date(log.expiresAt); tsText.textContent = t.toLocaleString('ja-JP'); left.appendChild(tsText); row.appendChild(left);
+      if (i === 0) { const btnUndo = document.createElement('button'); btnUndo.textContent = '取り消す'; btnUndo.className = 'btn-danger text-xs px-3 py-1 rounded shrink-0'; btnUndo.onclick = async () => { if (confirm('最新の操作を取り消しますか？')) { try { state.data = await apiCall('undo', {}); render(); } catch (e) { alert(e.message); } } }; row.appendChild(btnUndo); }
       list.appendChild(row);
     });
-    
     app.appendChild(list);
   }
 }
